@@ -230,6 +230,18 @@ class ConnectionManager:
             raise HTTPException(status_code=404, detail="Лобби не найдено")
         return lobby
 
+    async def delete_lobby(self, code: str, actor_id: str) -> None:
+        lobby = self.get_lobby(code)
+        if actor_id != lobby.host_id:
+            raise HTTPException(status_code=403, detail="Только создатель может удалить лобби")
+        # закрываем все подключения с кодом 4101
+        for ws, _pid in list(lobby.connections):
+            try:
+                await ws.close(code=4101, reason="lobby deleted")
+            except Exception:
+                pass
+        self.lobbies.pop(code.upper(), None)
+
     async def broadcast_state(self, lobby: Lobby) -> None:
         for ws, player_id in list(lobby.connections):
             try:
@@ -279,6 +291,10 @@ class KickRequest(BaseModel):
 
 
 class LeaveRequest(BaseModel):
+    player_id: str
+
+
+class DeleteLobbyRequest(BaseModel):
     player_id: str
 
 
@@ -397,6 +413,12 @@ async def leave_lobby(code: str, body: LeaveRequest) -> dict:
             lobby.connections.remove((ws, pid))
     await manager.broadcast_state(lobby)
     return {"left": True}
+
+
+@app.post("/lobby/{code}/delete")
+async def delete_lobby(code: str, body: DeleteLobbyRequest) -> dict:
+    await manager.delete_lobby(code, actor_id=body.player_id)
+    return {"deleted": True}
 
 
 @app.websocket("/ws/{code}/{player_id}")

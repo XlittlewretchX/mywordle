@@ -55,6 +55,10 @@ function App() {
       if (ev.code === 4001) {
         resetClientState();
       }
+      if (ev.code === 4101) {
+        notify("Лобби удалено");
+        resetClientState();
+      }
     };
     ws.onerror = () => setWsStatus("error");
     ws.onmessage = (event) => {
@@ -178,6 +182,17 @@ function App() {
         target_id: targetId,
       });
       notify("Игрок удалён");
+    } catch (error) {
+      notify(error.message);
+    }
+  };
+
+  const handleDeleteLobby = async () => {
+    if (!lobby) return;
+    try {
+      await postJson(`/lobby/${lobby.code}/delete`, { player_id: playerId });
+      resetClientState();
+      notify("Лобби удалено");
     } catch (error) {
       notify(error.message);
     }
@@ -351,6 +366,11 @@ function App() {
             {isHost && !started && (
               <button className="primary" onClick={handleStart}>
                 Начать игру
+              </button>
+            )}
+            {isHost && (
+              <button className="ghost danger" onClick={handleDeleteLobby}>
+                Удалить лобби
               </button>
             )}
             {!isHost && (

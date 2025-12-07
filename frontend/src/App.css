@@ -432,6 +432,7 @@ button:hover {
   flex-direction: column;
   gap: 6px;
   align-items: center;
+  width: 100%;
 }
 
 .kb-row {
@@ -439,11 +440,14 @@ button:hover {
   gap: 6px;
   justify-content: center;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .kb-key {
-  min-width: 34px;
-  padding: 10px 12px;
+  flex: 1 1 36px;
+  min-width: 30px;
+  max-width: 44px;
+  padding: 10px 10px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
@@ -453,7 +457,8 @@ button:hover {
 }
 
 .kb-key.wide {
-  min-width: 70px;
+  flex: 1.5 1 70px;
+  max-width: 110px;
 }
 
 .kb-key.correct {
@@ -486,13 +491,39 @@ button:hover {
 
 @media (max-width: 640px) {
   .kb-key {
-    min-width: 30px;
-    padding: 9px 10px;
-    font-size: 14px;
+    flex: 1 1 28px;
+    min-width: 26px;
+    max-width: 40px;
+    padding: 8px 8px;
+    font-size: 13px;
   }
 
   .kb-key.wide {
-    min-width: 64px;
+    flex: 1.5 1 60px;
+    max-width: 96px;
+  }
+
+  .kb-row {
+    gap: 5px;
+  }
+}
+
+@media (max-width: 420px) {
+  .kb-row {
+    gap: 4px;
+  }
+
+  .kb-key {
+    flex: 1 1 24px;
+    min-width: 24px;
+    max-width: 36px;
+    padding: 7px 6px;
+    font-size: 12px;
+  }
+
+  .kb-key.wide {
+    flex: 1.6 1 54px;
+    max-width: 90px;
   }
 }
 .center {
