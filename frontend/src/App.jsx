@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const WS_URL = import.meta.env.VITE_WS_URL || API_URL.replace(/^http/, "ws");
+const API_URL_RAW = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = API_URL_RAW.replace(/\/+$/, "");
+const WS_URL_RAW = import.meta.env.VITE_WS_URL || API_URL.replace(/^http/, "ws");
+const WS_URL = WS_URL_RAW.replace(/\/+$/, "");
 
 const initialLobby = null;
 
@@ -310,7 +312,7 @@ function App() {
                   Код лобби: <strong>{lobbyCode}</strong>
                 </div>
               )}
-            </div>
+      </div>
 
             <div className="card action-block join">
               <h2>Войти по коду</h2>
@@ -325,7 +327,7 @@ function App() {
               </label>
               <button className="primary full" onClick={handleJoin} disabled={!playerName.trim()}>
                 Подключиться
-              </button>
+        </button>
               <p className="hint">Максимум 4 игрока в комнате.</p>
             </div>
           </section>
@@ -344,8 +346,8 @@ function App() {
               <p>Статус: {lobby.started ? "Идет игра" : "Ждем начала"}</p>
               <p className="muted">
                 Ваши попытки видны только вам. Попытки соперников скрыты.
-              </p>
-            </div>
+        </p>
+      </div>
             {isHost && !started && (
               <button className="primary" onClick={handleStart}>
                 Начать игру
