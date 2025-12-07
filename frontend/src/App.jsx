@@ -20,6 +20,7 @@ function App() {
   const [message, setMessage] = useState("");
   const [guess, setGuess] = useState("");
   const [wsStatus, setWsStatus] = useState("disconnected");
+  const [wsNonce, setWsNonce] = useState(0);
 
   const isHost = lobby && playerId === lobby.hostId;
   const started = lobby?.started;
@@ -59,6 +60,11 @@ function App() {
         notify("Лобби удалено");
         resetClientState();
       }
+      // авто-переподключение при обычном разрыве
+      if ([4001, 4101, 4401].includes(ev.code)) return;
+      if (lobby?.code && playerId) {
+        setTimeout(() => setWsNonce((n) => n + 1), 1500);
+      }
     };
     ws.onerror = () => setWsStatus("error");
     ws.onmessage = (event) => {
@@ -81,7 +87,7 @@ function App() {
     };
 
     return () => ws.close();
-  }, [lobby?.code, playerId]);
+  }, [lobby?.code, playerId, wsNonce]);
 
   const notify = (text) => {
     setMessage(text);

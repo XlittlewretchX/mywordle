@@ -431,11 +431,10 @@ async def websocket_endpoint(websocket: WebSocket, code: str, player_id: str) ->
     await manager.connect(lobby, websocket, player_id)
     try:
         while True:
-            await asyncio.wait_for(websocket.receive_text(), timeout=120)
-    except asyncio.TimeoutError:
-        await websocket.close(code=4000)
-    except WebSocketDisconnect:
-        pass
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
     finally:
         manager.disconnect(lobby, websocket)
 
