@@ -14,27 +14,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "data" / "words_ru.txt"
+DATA_PATH_TARGET = BASE_DIR / "data" / "words_ru.txt"
+DATA_PATH_ALLOWED = BASE_DIR / "data" / "words.txt"
 MAX_PLAYERS = 4
 
 
-def _load_words() -> Dict[int, List[str]]:
-    if not DATA_PATH.exists():
-        raise RuntimeError(f"Word list not found at {DATA_PATH}")
+def _load_words(path: Path) -> Dict[int, List[str]]:
+    if not path.exists():
+        raise RuntimeError(f"Word list not found at {path}")
     by_length: Dict[int, List[str]] = {}
-    with DATA_PATH.open("r", encoding="utf-8") as handle:
+    with path.open("r", encoding="utf-8") as handle:
         for raw in handle:
             word = raw.strip().lower()
             if not word:
                 continue
             by_length.setdefault(len(word), []).append(word)
     if not by_length:
-        raise RuntimeError("Word list is empty")
+        raise RuntimeError(f"Word list is empty: {path}")
     return by_length
 
 
-WORDS_BY_LENGTH = _load_words()
-ALLOWED_LENGTHS = sorted(k for k in WORDS_BY_LENGTH.keys() if 4 <= k <= 12)
+TARGET_WORDS_BY_LENGTH = _load_words(DATA_PATH_TARGET)
+ALLOWED_GUESS_BY_LENGTH = {length: set(words) for length, words in _load_words(DATA_PATH_ALLOWED).items()}
+ALLOWED_LENGTHS = sorted(k for k in TARGET_WORDS_BY_LENGTH.keys() if 4 <= k <= 12)
 
 
 def generate_code(length: int = 5) -> str:
@@ -44,7 +46,7 @@ def generate_code(length: int = 5) -> str:
 
 def pick_word(word_length: int) -> str:
     try:
-        return random.choice(WORDS_BY_LENGTH[word_length])
+        return random.choice(TARGET_WORDS_BY_LENGTH[word_length])
     except KeyError as exc:  # pragma: no cover - validated earlier
         raise HTTPException(status_code=400, detail="Нет слов такой длины") from exc
 
@@ -184,7 +186,9 @@ class Lobby:
         guess_word = guess_word.lower()
         if len(guess_word) != len(self.word):
             raise HTTPException(status_code=400, detail="Неверная длина слова")
-        if guess_word not in WORDS_BY_LENGTH.get(len(self.word), []):
+        allowed_set = ALLOWED_GUESS_BY_LENGTH.get(len(self.word), set())
+        target_set = set(TARGET_WORDS_BY_LENGTH.get(len(self.word), []))
+        if guess_word not in allowed_set and guess_word not in target_set:
             raise HTTPException(status_code=400, detail="Слова нет в словаре")
 
         feedback = evaluate_guess(self.word, guess_word)
@@ -202,6 +206,7 @@ class Lobby:
             "hostId": self.host_id,
             "started": self.started,
             "winnerId": self.winner_id,
+            "winnerWord": self.word if self.winner_id else None,
             "players": [p.to_public_for(viewer_id) for p in self.players.values()],
         }
 

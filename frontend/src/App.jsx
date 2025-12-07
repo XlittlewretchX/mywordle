@@ -515,6 +515,12 @@ function App() {
             </div>
           )}
 
+          {lobby.winnerId && lobby.winnerWord && (
+            <div className="flash success">
+              Слово раунда: {lobby.winnerWord.toUpperCase()}
+            </div>
+          )}
+
           {attemptsUsed >= lobby.attemptsLimit && !lobby.winnerId && (
             <div className="flash danger">
               Попытки закончились — вы проиграли этот раунд. Подождите рестарта от хоста.
@@ -526,6 +532,9 @@ function App() {
               Победитель:{" "}
               {playersWithGuesses.find((p) => p.id === lobby.winnerId)?.name ||
                 "Неизвестно"}
+              {lobby.winnerWord && (
+                <span className="winner-word"> — слово: {lobby.winnerWord.toUpperCase()}</span>
+              )}
               {isHost && (
                 <button className="primary inline-btn" onClick={handleRestart}>
                   Новая игра
