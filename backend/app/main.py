@@ -292,12 +292,12 @@ class Lobby:
             raise HTTPException(status_code=400, detail="Попытки игрока закончились")
 
         # определяем группу (команда или игрок) и берем слово из последовательности
-        group_id = player.team if self.team_mode else player_id
+        group_key = player.team if self.team_mode else player_id
         if self.timed_mode:
-            if group_id not in self.group_progress:
+            if group_key not in self.group_progress:
                 # новый игрок в процессе раунда - присваиваем стартовую позицию
-                self.group_progress[group_id] = 0
-            idx = self.group_progress[group_id]
+                self.group_progress[group_key] = 0
+            idx = self.group_progress[group_key]
             if idx >= len(self.word_sequence):
                 # защита, не должно случаться
                 self.word_sequence.append(pick_word(self.word_length))
@@ -324,7 +324,7 @@ class Lobby:
 
         attempt_score = score_attempt(secret, guess_word, feedback) if self.timed_mode else 0
         if self.timed_mode:
-            best_key = player.team if self.team_mode else player_id
+            best_key = group_key
             prev_best = self.best_attempt_scores.get(best_key, 0)
             if attempt_score > prev_best:
                 delta = attempt_score - prev_best
@@ -346,7 +346,7 @@ class Lobby:
                 logger.info("Timed solved by %s (%s team %s): %s", player.name, player.id, player.team, secret)
                 if self.auto_advance:
                     # двигаем группу на следующий индекс
-                    current_idx = self.group_progress.get(player.team if self.team_mode else player_id, 0)
+                    current_idx = self.group_progress.get(group_key, 0)
                     next_idx = current_idx + 1
                     # при необходимости расширяем последовательность одним новым словом
                     if next_idx >= len(self.word_sequence):
@@ -354,7 +354,6 @@ class Lobby:
                         self.word_sequence.append(new_word)
                         logger.info("Timed sequence append step%d=%s", next_idx, new_word)
                     # обновляем прогресс для группы
-                    group_key = player.team if self.team_mode else player_id
                     self.group_progress[group_key] = next_idx
                     # сбрасываем попытки и best score у группы (команда/игрок)
                     if self.team_mode:
@@ -365,6 +364,30 @@ class Lobby:
                     else:
                         player.guesses.clear()
                         self.best_attempt_scores[player_id] = 0
+
+        # тайм-режим: если все игроки группы исчерпали попытки и авто-переход включен — двигаем на следующее слово
+        if self.timed_mode and self.auto_advance and not self.winner_id:
+            group_players = (
+                [p for p in self.players.values() if p.team == group_key]
+                if self.team_mode
+                else [player]
+            )
+            all_out_group = all(len(p.guesses) >= self.attempts_limit for p in group_players)
+            if all_out_group:
+                current_idx = self.group_progress.get(group_key, 0)
+                next_idx = current_idx + 1
+                if next_idx >= len(self.word_sequence):
+                    new_word = pick_word(self.word_length)
+                    self.word_sequence.append(new_word)
+                    logger.info("Timed sequence append step%d=%s (attempts exhausted)", next_idx, new_word)
+                self.group_progress[group_key] = next_idx
+                if self.team_mode:
+                    for pl in group_players:
+                        pl.guesses.clear()
+                    self.best_attempt_scores[group_key] = 0
+                else:
+                    player.guesses.clear()
+                    self.best_attempt_scores[player_id] = 0
 
         # если классика и у всех закончились попытки, завершаем раунд без победителя
         if not self.timed_mode and not self.winner_id:
@@ -383,6 +406,13 @@ class Lobby:
         remaining_seconds = None
         if self.timed_mode and self.round_ends_at:
             remaining_seconds = max(0, int(self.round_ends_at - time.time()))
+        # скрываем текущее/будущее слово: отдаём только уже пройденные слова в тайм-режиме
+        word_sequence_public = None
+        if self.timed_mode:
+            solved_upto = max(self.group_progress.values()) if self.group_progress else 0
+            solved_upto = min(solved_upto, len(self.word_sequence))
+            word_sequence_public = self.word_sequence[:solved_upto]
+
         return {
             "code": self.code,
             "wordLength": self.word_length,
@@ -405,7 +435,7 @@ class Lobby:
             "timedFinished": timed_finished,
             "noWinnerFinished": self.no_winner_finished if not self.timed_mode else False,
             "failedWord": self.failed_word if self.no_winner_finished else None,
-            "wordSequence": self.word_sequence if self.timed_mode else None,
+            "wordSequence": word_sequence_public,
         }
 
 
@@ -524,11 +554,16 @@ class DeleteLobbyRequest(BaseModel):
     player_id: str
 
 
+class ReconnectRequest(BaseModel):
+    player_id: str
+    player_name: Optional[str] = Field(None, max_length=32)
+
+
 class RestartRequest(BaseModel):
     player_id: str
 
 
-app = FastAPI(title="Wordle RU Multiplayer", version="0.1.0")
+app = FastAPI(title="MyWordle Multiplayer", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -665,6 +700,29 @@ async def leave_lobby(code: str, body: LeaveRequest) -> dict:
             lobby.connections.remove((ws, pid))
     await manager.broadcast_state(lobby)
     return {"left": True}
+
+
+@app.post("/lobby/{code}/reconnect")
+async def reconnect_lobby(code: str, body: ReconnectRequest) -> dict:
+    lobby = manager.get_lobby(code)
+    if body.player_id not in lobby.players:
+        # если игрока нет (перезапуск клиента), пытаемся восстановить слот
+        name = (body.player_name or "Игрок").strip() or "Игрок"
+        if len(name) > 32:
+            name = name[:32]
+        if lobby.team_mode:
+            count_a = sum(1 for p in lobby.players.values() if p.team == "A")
+            count_b = sum(1 for p in lobby.players.values() if p.team == "B")
+            team = "A" if count_a <= count_b else "B"
+        else:
+            team = "A"
+        lobby.players[body.player_id] = Player(id=body.player_id, name=name, team=team)
+        if lobby.timed_mode and lobby.word_sequence:
+            # добавить прогресс для восстановленного игрока/команды, если нет
+            group_key = team if lobby.team_mode else body.player_id
+            lobby.group_progress.setdefault(group_key, 0)
+            lobby.best_attempt_scores.setdefault(group_key, 0)
+    return lobby.to_public_for(body.player_id)
 
 
 @app.post("/lobby/{code}/delete")

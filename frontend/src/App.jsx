@@ -5,6 +5,7 @@ const API_URL_RAW = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const API_URL = API_URL_RAW.replace(/\/+$/, "");
 const WS_URL_RAW = import.meta.env.VITE_WS_URL || API_URL.replace(/^http/, "ws");
 const WS_URL = WS_URL_RAW.replace(/\/+$/, "");
+const SESSION_KEY = "wordle_session";
 
 const initialLobby = null;
 
@@ -35,6 +36,7 @@ function App() {
   const [lobbyCode, setLobbyCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [playerId, setPlayerId] = useState("");
+  const [playerName, setPlayerName] = useState("");
   const [lobby, setLobby] = useState(initialLobby);
   const [toasts, setToasts] = useState([]);
   const [guess, setGuess] = useState("");
@@ -62,6 +64,32 @@ function App() {
   }, []);
 
   const stampLobby = (state) => (state ? { ...state, _receivedAt: Date.now() } : state);
+
+  useEffect(() => {
+    // авто-восстановление сессии после перезагрузки
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed.code || !parsed.playerId) return;
+      postJson(`/lobby/${parsed.code}/reconnect`, {
+        player_id: parsed.playerId,
+        player_name: parsed.playerName || "Игрок",
+      })
+        .then((state) => {
+          setPlayerId(parsed.playerId);
+          setPlayerName(parsed.playerName || "");
+          setLobby(stampLobby(state));
+          setLobbyCode(parsed.code);
+          setJoinCode(parsed.code);
+        })
+        .catch(() => {
+          localStorage.removeItem(SESSION_KEY);
+        });
+    } catch (e) {
+      localStorage.removeItem(SESSION_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     if (!lobby?.code || !playerId) return undefined;
@@ -159,6 +187,10 @@ function App() {
       setLobby(stampLobby(data.lobby));
       setLobbyCode(data.lobby.code);
       setJoinCode(data.lobby.code);
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ code: data.lobby.code, playerId: data.playerId, playerName: playerName.trim() }),
+      );
       pushToast("Лобби создано", `Код: ${data.lobby.code}`, "success");
     } catch (error) {
       pushToast("Ошибка", error.message, "error");
@@ -176,6 +208,10 @@ function App() {
       setPlayerId(data.playerId);
       setLobby(stampLobby(data.lobby));
       setLobbyCode(code);
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ code, playerId: data.playerId, playerName: playerName.trim() }),
+      );
       pushToast("Готово", "Присоединились к лобби", "success");
     } catch (error) {
       pushToast("Ошибка", error.message, "error");
@@ -207,6 +243,7 @@ function App() {
     setLobbyCode("");
     setJoinCode("");
     setGuess("");
+    localStorage.removeItem(SESSION_KEY);
   };
 
   const handleLeave = async () => {
@@ -370,7 +407,7 @@ function App() {
       <header className="topbar hero">
         <div className="hero-text">
           <p className="eyebrow">Русский мультиплеер до 4 игроков</p>
-          <h1>Wordle RU</h1>
+          <h1>MyWordle</h1>
           <p className="subtitle">
             Заходите по коду, выбирайте длину слова и играйте честно: попытки соперников скрыты.
           </p>
@@ -386,12 +423,6 @@ function App() {
                 Таймер: {Math.floor((roundRemainingSec || 0) / 60)}:
                 {String((roundRemainingSec || 0) % 60).padStart(2, "0")}
               </span>
-            )}
-            {lobby?.teamMode && teamTotals && (
-              <>
-                <span className="chip chip-team-a">Команда A: {teamTotals[0].score}</span>
-                <span className="chip chip-team-b">Команда B: {teamTotals[1].score}</span>
-              </>
             )}
           </div>
         </div>
