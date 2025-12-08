@@ -21,6 +21,11 @@ DATA_PATH_ALLOWED = BASE_DIR / "data" / "words.txt"
 MAX_PLAYERS = 4
 
 
+def normalize_word(word: str) -> str:
+    """Lowercase and replace ё with е to unify alphabet."""
+    return word.strip().lower().replace("ё", "е")
+
+
 def _load_words(path: Path) -> Dict[int, List[str]]:
     if not path.exists():
         raise RuntimeError(f"Word list not found at {path}")
@@ -34,7 +39,7 @@ def _load_words(path: Path) -> Dict[int, List[str]]:
             lines = handle_fallback.readlines()
 
     for raw in lines:
-        word = raw.strip().lower()
+        word = normalize_word(raw)
         if not word:
             continue
         by_length.setdefault(len(word), []).append(word)
@@ -302,7 +307,7 @@ class Lobby:
                 raise HTTPException(status_code=400, detail="Секрет не задан")
             secret = self.word
 
-        guess_word = guess_word.lower()
+        guess_word = normalize_word(guess_word)
         if len(guess_word) != len(secret):
             raise HTTPException(status_code=400, detail="Неверная длина слова")
         allowed_set = ALLOWED_GUESS_BY_LENGTH.get(len(secret), set())
@@ -319,11 +324,12 @@ class Lobby:
 
         attempt_score = score_attempt(secret, guess_word, feedback) if self.timed_mode else 0
         if self.timed_mode:
-            prev_best = self.best_attempt_scores.get(player_id, 0)
+            best_key = player.team if self.team_mode else player_id
+            prev_best = self.best_attempt_scores.get(best_key, 0)
             if attempt_score > prev_best:
                 delta = attempt_score - prev_best
                 player.total_score += delta
-                self.best_attempt_scores[player_id] = attempt_score
+                self.best_attempt_scores[best_key] = attempt_score
                 if self.team_mode:
                     self.team_scores[player.team] = self.team_scores.get(player.team, 0) + delta
 
@@ -355,7 +361,7 @@ class Lobby:
                         for pl in self.players.values():
                             if pl.team == group_key:
                                 pl.guesses.clear()
-                                self.best_attempt_scores[pl.id] = 0
+                        self.best_attempt_scores[group_key] = 0
                     else:
                         player.guesses.clear()
                         self.best_attempt_scores[player_id] = 0
@@ -374,6 +380,9 @@ class Lobby:
         viewer_team = None
         if viewer_id and viewer_id in self.players:
             viewer_team = self.players[viewer_id].team
+        remaining_seconds = None
+        if self.timed_mode and self.round_ends_at:
+            remaining_seconds = max(0, int(self.round_ends_at - time.time()))
         return {
             "code": self.code,
             "wordLength": self.word_length,
@@ -381,6 +390,7 @@ class Lobby:
             "timedMode": self.timed_mode,
             "roundSeconds": self.round_seconds,
             "roundEndsAt": self.round_ends_at,
+            "roundRemainingSeconds": remaining_seconds,
             "autoAdvance": self.auto_advance,
             "teamMode": self.team_mode,
             "hostId": self.host_id,

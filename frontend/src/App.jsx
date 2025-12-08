@@ -61,6 +61,8 @@ function App() {
     loadLengths();
   }, []);
 
+  const stampLobby = (state) => (state ? { ...state, _receivedAt: Date.now() } : state);
+
   useEffect(() => {
     if (!lobby?.code || !playerId) return undefined;
     const ws = new WebSocket(`${WS_URL}/ws/${lobby.code}/${playerId}`);
@@ -99,7 +101,7 @@ function App() {
             ws.close();
             return;
           }
-          setLobby(state);
+          setLobby(stampLobby(state));
         }
       } catch (err) {
         console.error("Bad WS message", err);
@@ -110,10 +112,10 @@ function App() {
   }, [lobby?.code, playerId, wsNonce]);
 
   useEffect(() => {
-    if (!lobby?.roundEndsAt) return;
+    if (!lobby?.timedMode) return undefined;
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [lobby?.roundEndsAt]);
+  }, [lobby?.timedMode, lobby?._receivedAt]);
 
   const removeToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
@@ -154,7 +156,7 @@ function App() {
         team_mode: teamMode,
       });
       setPlayerId(data.playerId);
-      setLobby(data.lobby);
+      setLobby(stampLobby(data.lobby));
       setLobbyCode(data.lobby.code);
       setJoinCode(data.lobby.code);
       pushToast("Лобби создано", `Код: ${data.lobby.code}`, "success");
@@ -172,7 +174,7 @@ function App() {
         player_name: playerName.trim(),
       });
       setPlayerId(data.playerId);
-      setLobby(data.lobby);
+      setLobby(stampLobby(data.lobby));
       setLobbyCode(code);
       pushToast("Готово", "Присоединились к лобби", "success");
     } catch (error) {
@@ -183,7 +185,7 @@ function App() {
   const handleStart = async () => {
     try {
       const data = await postJson(`/lobby/${lobby.code}/start`, { player_id: playerId });
-      setLobby(data);
+      setLobby(stampLobby(data));
     } catch (error) {
       pushToast("Ошибка", error.message, "error");
     }
@@ -192,7 +194,7 @@ function App() {
   const handleRestart = async () => {
     try {
       const data = await postJson(`/lobby/${lobby.code}/restart`, { player_id: playerId });
-      setLobby(data);
+      setLobby(stampLobby(data));
       setGuess("");
     } catch (error) {
       pushToast("Ошибка", error.message, "error");
@@ -237,7 +239,7 @@ function App() {
         target_id: targetId,
         team,
       });
-      setLobby(data);
+      setLobby(stampLobby(data));
     } catch (error) {
       pushToast("Ошибка", error.message, "error");
     }
@@ -313,10 +315,12 @@ function App() {
   }, [lobby?.teamMode, playersWithGuesses, you]);
 
   const roundRemainingSec = useMemo(() => {
-    if (!lobby?.roundEndsAt) return null;
-    const diffMs = lobby.roundEndsAt * 1000 - nowTs;
-    return Math.max(0, Math.floor(diffMs / 1000));
-  }, [lobby?.roundEndsAt, nowTs]);
+    if (!lobby?.timedMode) return null;
+    const base = lobby.roundRemainingSeconds;
+    if (base === undefined || base === null) return null;
+    const elapsed = lobby._receivedAt ? Math.floor((nowTs - lobby._receivedAt) / 1000) : 0;
+    return Math.max(0, base - elapsed);
+  }, [lobby?.timedMode, lobby?.roundRemainingSeconds, lobby?._receivedAt, nowTs]);
 
   const timedFinished = lobby?.timedFinished || (lobby?.timedMode && roundRemainingSec === 0);
   const noWinnerFinished = lobby?.noWinnerFinished;
