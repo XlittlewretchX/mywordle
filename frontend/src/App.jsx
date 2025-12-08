@@ -8,19 +8,39 @@ const WS_URL = WS_URL_RAW.replace(/\/+$/, "");
 
 const initialLobby = null;
 
+const Toast = ({ title, text, sub, type = "info", onClose }) => (
+  <div className={`toast ${type}`}>
+    <div className="toast-icon">{type === "success" ? "✓" : type === "error" ? "!" : "i"}</div>
+    <div className="toast-body">
+      <div className="toast-title">{title}</div>
+      {text && <div className="toast-text">{text}</div>}
+      {sub && <div className="toast-sub">{sub}</div>}
+    </div>
+    <button className="toast-close" onClick={onClose} aria-label="Закрыть уведомление">
+      ×
+    </button>
+    <div className="toast-progress" />
+  </div>
+);
+
 function App() {
   const [playerName, setPlayerName] = useState("");
   const [wordLength, setWordLength] = useState(5);
   const [attemptsLimit, setAttemptsLimit] = useState(6);
+  const [timedMode, setTimedMode] = useState(false);
+  const [roundSeconds, setRoundSeconds] = useState(180);
+  const autoAdvance = true;
+  const [teamMode, setTeamMode] = useState(false);
   const [availableLengths, setAvailableLengths] = useState([]);
   const [lobbyCode, setLobbyCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [playerId, setPlayerId] = useState("");
   const [lobby, setLobby] = useState(initialLobby);
-  const [message, setMessage] = useState("");
+  const [toasts, setToasts] = useState([]);
   const [guess, setGuess] = useState("");
   const [wsStatus, setWsStatus] = useState("disconnected");
   const [wsNonce, setWsNonce] = useState(0);
+  const [nowTs, setNowTs] = useState(Date.now());
 
   const isHost = lobby && playerId === lobby.hostId;
   const started = lobby?.started;
@@ -89,9 +109,22 @@ function App() {
     return () => ws.close();
   }, [lobby?.code, playerId, wsNonce]);
 
+  useEffect(() => {
+    if (!lobby?.roundEndsAt) return;
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [lobby?.roundEndsAt]);
+
+  const removeToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  const pushToast = (title, text, type = "info", sub = "") => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, title, text, type, sub }]);
+    setTimeout(() => removeToast(id), 5000);
+  };
+
   const notify = (text) => {
-    setMessage(text);
-    setTimeout(() => setMessage(""), 3000);
+    pushToast("Сообщение", text, "info");
   };
 
   const postJson = async (path, body) => {
@@ -115,14 +148,18 @@ function App() {
         player_name: playerName.trim(),
         word_length: wordLength,
         attempts_limit: attemptsLimit,
+        timed_mode: timedMode,
+        round_seconds: roundSeconds,
+        auto_advance: autoAdvance,
+        team_mode: teamMode,
       });
       setPlayerId(data.playerId);
       setLobby(data.lobby);
       setLobbyCode(data.lobby.code);
       setJoinCode(data.lobby.code);
-      notify("Лобби создано");
+      pushToast("Лобби создано", `Код: ${data.lobby.code}`, "success");
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -137,9 +174,9 @@ function App() {
       setPlayerId(data.playerId);
       setLobby(data.lobby);
       setLobbyCode(code);
-      notify("Присоединились к лобби");
+      pushToast("Готово", "Присоединились к лобби", "success");
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -148,7 +185,7 @@ function App() {
       const data = await postJson(`/lobby/${lobby.code}/start`, { player_id: playerId });
       setLobby(data);
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -158,7 +195,7 @@ function App() {
       setLobby(data);
       setGuess("");
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -175,9 +212,9 @@ function App() {
     try {
       await postJson(`/lobby/${lobby.code}/leave`, { player_id: playerId });
       resetClientState();
-      notify("Вы покинули лобби");
+      pushToast("Вы покинули лобби", "", "info");
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -193,14 +230,27 @@ function App() {
     }
   };
 
+  const handleTeamChange = async (targetId, team) => {
+    try {
+      const data = await postJson(`/lobby/${lobby.code}/team`, {
+        player_id: playerId,
+        target_id: targetId,
+        team,
+      });
+      setLobby(data);
+    } catch (error) {
+      pushToast("Ошибка", error.message, "error");
+    }
+  };
+
   const handleDeleteLobby = async () => {
     if (!lobby) return;
     try {
       await postJson(`/lobby/${lobby.code}/delete`, { player_id: playerId });
       resetClientState();
-      notify("Лобби удалено");
+      pushToast("Лобби удалено", "", "info");
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -214,13 +264,21 @@ function App() {
       return notify(`Нужно ${lobby.wordLength} букв`);
     }
     try {
-      await postJson(`/lobby/${lobby.code}/guess`, {
+      const res = await postJson(`/lobby/${lobby.code}/guess`, {
         player_id: playerId,
         guess: guess.trim().toLowerCase(),
       });
       setGuess("");
+      if (lobby?.timedMode && res?.guess?.feedback?.every((f) => f === "correct")) {
+        pushToast(
+          "Слово угадано!",
+          `Вы угадали ${res.guess.word.toUpperCase()}`,
+          "success",
+          "Новое слово уже ждёт, продолжай.",
+        );
+      }
     } catch (error) {
-      notify(error.message);
+      pushToast("Ошибка", error.message, "error");
     }
   };
 
@@ -233,19 +291,51 @@ function App() {
   const attemptsLimitValue = lobby?.attemptsLimit ?? attemptsLimit;
   const letterStates = useMemo(() => {
     const map = {};
-    if (!you?.guesses) return map;
-    you.guesses.forEach((g) => {
-      g.feedback.forEach((state, idx) => {
-        const letter = g.word[idx];
-        const prev = map[letter];
-        const priority = { correct: 3, present: 2, absent: 1, idle: 0 };
-        if (!prev || priority[state] > priority[prev]) {
-          map[letter] = state;
-        }
-      });
-    });
+    const priority = { correct: 3, present: 2, absent: 1, idle: 0 };
+    const sourcePlayers =
+      lobby?.teamMode && you
+        ? playersWithGuesses.filter((p) => p.team === you.team)
+        : you
+        ? [you]
+        : [];
+    sourcePlayers.forEach((pl) =>
+      pl.guesses?.forEach((g) =>
+        g.feedback.forEach((state, idx) => {
+          const letter = g.word[idx];
+          const prev = map[letter];
+          if (!prev || priority[state] > priority[prev]) {
+            map[letter] = state;
+          }
+        }),
+      ),
+    );
     return map;
-  }, [you]);
+  }, [lobby?.teamMode, playersWithGuesses, you]);
+
+  const roundRemainingSec = useMemo(() => {
+    if (!lobby?.roundEndsAt) return null;
+    const diffMs = lobby.roundEndsAt * 1000 - nowTs;
+    return Math.max(0, Math.floor(diffMs / 1000));
+  }, [lobby?.roundEndsAt, nowTs]);
+
+  const timedFinished = lobby?.timedFinished || (lobby?.timedMode && roundRemainingSec === 0);
+  const noWinnerFinished = lobby?.noWinnerFinished;
+  const failedWord = lobby?.failedWord;
+  const canGuess = started && !timedFinished && !lobby?.winnerId && !noWinnerFinished;
+  const scoreboard = useMemo(() => {
+    if (!lobby?.scores) return [];
+    return playersWithGuesses
+      .map((p) => ({ ...p, score: lobby.scores[p.id] ?? 0 }))
+      .sort((a, b) => b.score - a.score);
+  }, [lobby?.scores, playersWithGuesses]);
+
+  const teamTotals = useMemo(() => {
+    if (!lobby?.teamScores) return null;
+    return [
+      { id: "A", score: lobby.teamScores["A"] ?? 0 },
+      { id: "B", score: lobby.teamScores["B"] ?? 0 },
+    ];
+  }, [lobby?.teamScores]);
 
   const renderGuessRow = (entry) => (
     <div className="guess-row" key={entry.word + entry.feedback.join("")}>
@@ -259,6 +349,20 @@ function App() {
 
   return (
     <div className="page">
+      {toasts.length > 0 && (
+        <div className="toast-layer">
+          {toasts.map((t) => (
+            <Toast
+              key={t.id}
+              title={t.title}
+              text={t.text}
+              sub={t.sub}
+              type={t.type}
+              onClose={() => removeToast(t.id)}
+            />
+          ))}
+        </div>
+      )}
       <header className="topbar hero">
         <div className="hero-text">
           <p className="eyebrow">Русский мультиплеер до 4 игроков</p>
@@ -273,13 +377,25 @@ function App() {
             <span className="chip chip-code">Код: {lobby?.code || "—"}</span>
             <span className="chip chip-len">Длина: {lobby?.wordLength || wordLength} букв</span>
             <span className={`chip ${wsStatus}`}>WebSocket: {wsStatus}</span>
+            {lobby?.timedMode && roundRemainingSec !== null && (
+              <span className="chip chip-timer">
+                Таймер: {Math.floor((roundRemainingSec || 0) / 60)}:
+                {String((roundRemainingSec || 0) % 60).padStart(2, "0")}
+              </span>
+            )}
+            {lobby?.teamMode && teamTotals && (
+              <>
+                <span className="chip chip-team-a">Команда A: {teamTotals[0].score}</span>
+                <span className="chip chip-team-b">Команда B: {teamTotals[1].score}</span>
+              </>
+            )}
           </div>
         </div>
       </header>
 
       {!lobby && (
         <>
-          <section className="card stack name-card">
+          <section className="card name-card stack">
             <h2>Ваше имя</h2>
             <p className="muted">Покажем его в лобби и в таблице попыток.</p>
             <div className="name-row">
@@ -293,39 +409,88 @@ function App() {
             </div>
           </section>
 
-          <section className="grid lobby-actions">
-            <div className="card action-block create">
-              <h2>Создать лобби</h2>
-              <p className="muted">Выберите длину слова и получите код комнаты.</p>
-              <div className="inline-selects">
-                <label>
-                  Длина слова
-                  <select
-                    value={wordLength}
-                    onChange={(e) => setWordLength(Number(e.target.value))}
-                  >
-                    {availableLengths.map((len) => (
-                      <option key={len} value={len}>
-                        {len} букв
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Лимит попыток
-                  <select
-                    value={attemptsLimit}
-                    onChange={(e) => setAttemptsLimit(Number(e.target.value))}
-                  >
-                    {[4, 5, 6, 7, 8].map((n) => (
-                      <option key={n} value={n}>
-                        {n} попыток
-                      </option>
-                    ))}
-                  </select>
-                </label>
+          <section className="card setup-card">
+            <div className="setup-header">
+      <div>
+                <h2>Настройки лобби</h2>
+                <p className="muted">Выберите режим и параметры, затем создайте лобби или введите код.</p>
               </div>
-              <button className="primary full" onClick={handleCreate} disabled={!playerName.trim()}>
+            </div>
+
+            <div className="mode-switch">
+              <button
+                type="button"
+                className={`pill-btn ${!timedMode ? "active" : ""}`}
+                onClick={() => setTimedMode(false)}
+              >
+                Классический режим
+              </button>
+              <button
+                type="button"
+                className={`pill-btn ${timedMode ? "active" : ""}`}
+                onClick={() => setTimedMode(true)}
+              >
+                Гонка на время
+              </button>
+            </div>
+
+            <div className="inline-selects">
+              <label>
+                Длина слова
+                <select
+                  value={wordLength}
+                  onChange={(e) => setWordLength(Number(e.target.value))}
+                >
+                  {availableLengths.map((len) => (
+                    <option key={len} value={len}>
+                      {len} букв
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Лимит попыток
+                <select
+                  value={attemptsLimit}
+                  onChange={(e) => setAttemptsLimit(Number(e.target.value))}
+                >
+                  {[4, 5, 6, 7, 8].map((n) => (
+                    <option key={n} value={n}>
+                      {n} попыток
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {timedMode && (
+                <label>
+                  Время раунда (мин)
+                  <select
+                    value={Math.round(roundSeconds / 60)}
+                    onChange={(e) => setRoundSeconds(Number(e.target.value) * 60)}
+                  >
+                    {[1, 2, 3, 4, 5].map((m) => (
+                      <option key={m} value={m}>
+                        {m} мин
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={teamMode}
+                onChange={(e) => setTeamMode(e.target.checked)}
+              />
+              Командный режим
+            </label>
+
+            <div className="form-actions">
+              <button className="primary" onClick={handleCreate} disabled={!playerName.trim()}>
                 Создать лобби
               </button>
               {lobbyCode && (
@@ -335,27 +500,24 @@ function App() {
               )}
       </div>
 
-            <div className="card action-block join">
-              <h2>Войти по коду</h2>
-              <p className="muted">Вставьте код, который вам передал хост.</p>
-              <label>
-                Код лобби
-                <input
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="ABCDE"
-                />
-              </label>
-              <button className="primary full" onClick={handleJoin} disabled={!playerName.trim()}>
-                Подключиться
+            <div className="join-row">
+              <label className="full">
+                Войти по коду
+                <div className="join-inline">
+                  <input
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    placeholder="ABCDE"
+                  />
+                  <button onClick={handleJoin} disabled={!playerName.trim()}>
+                    Подключиться
         </button>
-              <p className="hint">Максимум 4 игрока в комнате.</p>
+                </div>
+              </label>
             </div>
           </section>
         </>
       )}
-
-      {message && (!lobby || !started) && <div className="flash">{message}</div>}
 
       {lobby && (
         <section className="card">
@@ -365,6 +527,13 @@ function App() {
               <p>Длина слова: {lobby.wordLength}</p>
               <p>Лимит попыток: {lobby.attemptsLimit}</p>
               <p>Статус: {lobby.started ? "Идет игра" : "Ждем начала"}</p>
+              {lobby.timedMode && (
+                <p className="muted">
+                  Таймер: {Math.floor((roundRemainingSec || 0) / 60)}:
+                  {String((roundRemainingSec || 0) % 60).padStart(2, "0")} • Авто-переход:{" "}
+                  {lobby.autoAdvance ? "вкл" : "выкл"}
+                </p>
+              )}
               <p className="muted">
                 Ваши попытки видны только вам. Попытки соперников скрыты.
         </p>
@@ -386,42 +555,52 @@ function App() {
             )}
           </header>
 
-          <div className="players">
+          <div className="players compact">
             {playersWithGuesses.map((p) => (
-              <div className="player" key={p.id}>
-                <div className="player-head">
-                  <div>
+              <div className="player-card" key={p.id}>
+                <div className="card-top">
+                  <div className="player-info">
                     <strong>{p.name}</strong>
                     {p.id === lobby.hostId && <span className="badge">Хост</span>}
                     {p.id === playerId && <span className="badge you">Вы</span>}
+                    {lobby.teamMode && (
+                      <span className={`badge team ${p.team === "A" ? "team-a" : "team-b"}`}>{p.team}</span>
+                    )}
                   </div>
-                  {lobby.winnerId === p.id && (
-                    <span className="winner">Угадал слово!</span>
-                  )}
-                  {isHost && p.id !== lobby.hostId && (
-                    <button
-                      className="ghost danger mini"
-                      onClick={() => handleKick(p.id)}
-                    >
+                  {lobby.winnerId === p.id && <span className="winner">Угадал слово!</span>}
+                </div>
+                {isHost && p.id !== lobby.hostId && (
+                  <div className="card-bottom">
+                    {lobby.teamMode && (
+                      <div className="team-switch">
+                        <button
+                          type="button"
+                          className={`mini-pill ${p.team === "A" ? "active" : ""}`}
+                          onClick={() => handleTeamChange(p.id, "A")}
+                        >
+                          A
+                        </button>
+                        <button
+                          type="button"
+                          className={`mini-pill ${p.team === "B" ? "active" : ""}`}
+                          onClick={() => handleTeamChange(p.id, "B")}
+                        >
+                          B
+                        </button>
+                      </div>
+                    )}
+                    <button className="ghost danger mini" onClick={() => handleKick(p.id)}>
                       Удалить
                     </button>
-                  )}
-                </div>
-                <div className="guesses">
-                  {p.id === playerId ? (
-                    <p className="hint">Ваши строки — в блоке «Ваши попытки» ниже.</p>
-                  ) : (
-                    <p className="hint">Попытки соперников скрыты.</p>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-
         </section>
       )}
 
-      {lobby && started && (
+      {lobby && started && !timedFinished && (
         <section className="card play-area">
           <h3>Ваши попытки</h3>
           <p className="muted">
@@ -434,13 +613,38 @@ function App() {
             <span className="chip chip-code">
               Попытки: {attemptsUsed} / {lobby.attemptsLimit}
             </span>
+            {lobby.timedMode && roundRemainingSec !== null && (
+              <span className="chip chip-timer">
+                Осталось: {Math.floor((roundRemainingSec || 0) / 60)}:
+                {String((roundRemainingSec || 0) % 60).padStart(2, "0")}
+              </span>
+            )}
           </div>
           <div className="board">
-            {you?.guesses?.length ? (
-              you.guesses.map(renderGuessRow)
-            ) : (
-              <p className="hint">Пока нет попыток — введите первое слово.</p>
-            )}
+            {lobby.teamMode && you
+              ? playersWithGuesses
+                  .filter((p) => p.team === you.team)
+                  .flatMap((p) =>
+                    p.guesses.map((g, idx) => ({
+                      ...g,
+                      key: `${g.word}-${p.id}-${g.order ?? idx}`,
+                      owner: p.name,
+                      isYou: p.id === you.id,
+                      order: g.order ?? idx,
+                    })),
+                  )
+                  .sort((a, b) => a.order - b.order)
+                  .map((entry) => (
+                    <div className="guess-row-wrapper" key={entry.key}>
+                      <div className="guess-owner">
+                        {entry.owner} {entry.isYou && <span className="badge you">Вы</span>}
+                      </div>
+                      {renderGuessRow(entry)}
+                    </div>
+                  ))
+              : you?.guesses?.length
+              ? you.guesses.map(renderGuessRow)
+              : <p className="hint">Пока нет попыток — введите первое слово.</p>}
           </div>
 
           {!lobby.winnerId && (
@@ -466,13 +670,7 @@ function App() {
             </div>
           )}
 
-          {message && started && (
-            <div className="flash">
-              {message}
-            </div>
-          )}
-
-          {!lobby.winnerId && (
+          {canGuess && (
             <div className="keyboard">
               {["йцукенгшщзхъ", "фывапролджэ", "ячсмитьбю"].map((row) => (
                 <div className="kb-row" key={row}>
@@ -521,7 +719,7 @@ function App() {
             </div>
           )}
 
-          {attemptsUsed >= lobby.attemptsLimit && !lobby.winnerId && (
+          {attemptsUsed >= lobby.attemptsLimit && !lobby.winnerId && !timedFinished && (
             <div className="flash danger">
               Попытки закончились — вы проиграли этот раунд. Подождите рестарта от хоста.
             </div>
@@ -529,9 +727,28 @@ function App() {
 
           {lobby.winnerId && (
             <div className="flash success">
-              Победитель:{" "}
-              {playersWithGuesses.find((p) => p.id === lobby.winnerId)?.name ||
-                "Неизвестно"}
+              {lobby.teamMode ? (
+                <>
+                  Победила команда{" "}
+                  <strong>
+                    {playersWithGuesses.find((p) => p.id === lobby.winnerId)?.team || "?"}
+                  </strong>
+                  :{" "}
+                  {playersWithGuesses
+                    .filter(
+                      (p) =>
+                        p.team ===
+                        (playersWithGuesses.find((pl) => pl.id === lobby.winnerId)?.team || ""),
+                    )
+                    .map((p) => p.name)
+                    .join(", ")}
+                </>
+              ) : (
+                <>
+                  Победитель:{" "}
+                  {playersWithGuesses.find((p) => p.id === lobby.winnerId)?.name || "Неизвестно"}
+                </>
+              )}
               {lobby.winnerWord && (
                 <span className="winner-word"> — слово: {lobby.winnerWord.toUpperCase()}</span>
               )}
@@ -542,6 +759,85 @@ function App() {
               )}
             </div>
           )}
+
+          {noWinnerFinished && (
+            <div className="flash danger">
+              Попытки закончились у всех. Никто не угадал.
+              {failedWord && (
+                <span className="winner-word"> Слово было: {failedWord.toUpperCase()}</span>
+              )}
+              {isHost && (
+                <button className="primary inline-btn" onClick={handleRestart}>
+                  Перезапустить игру
+                </button>
+              )}
+            </div>
+          )}
+
+        </section>
+      )}
+
+      {lobby?.timedMode && timedFinished && (
+        <section className="card score-card">
+          <div className="score-board">
+            <div className="score-board-head">
+              <div>
+                <h4>Итоги раунда</h4>
+                {!lobby.timedMode && lobby.lastSolvedWord && (
+                  <p className="muted">Слово раунда: {lobby.lastSolvedWord.toUpperCase()}</p>
+                )}
+                {lobby.timedMode && lobby.wordSequence?.length ? (
+                  <div className="word-seq">
+                    <span className="muted">Слова раунда:</span>
+                    <div className="word-chip-row">
+                      {lobby.wordSequence.map((w, idx) => (
+                        <span className="word-chip" key={`${w}-${idx}`}>
+                          {idx + 1}. {w.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              {lobby.teamMode && teamTotals && (
+                <div className="team-totals">
+                  <span className="chip chip-team-a">Команда A: {teamTotals[0].score}</span>
+                  <span className="chip chip-team-b">Команда B: {teamTotals[1].score}</span>
+                </div>
+              )}
+            </div>
+            <div className="score-table">
+              <div className="score-row head">
+                <span>Игрок</span>
+                <span>Очки</span>
+                {lobby.teamMode && <span>Команда</span>}
+              </div>
+              {scoreboard.map((p, idx) => (
+                <div key={p.id} className="score-row">
+                  <div className="player-info">
+                    <span className="score-rank">{idx + 1}</span>
+                    <span className="score-name">{p.name}</span>
+                  </div>
+                  <div className="score-meta">
+                    <span className="score-value">{p.score} очк.</span>
+                    {idx === 0 && <span className="chip chip-live">MVP</span>}
+                  </div>
+                  {lobby.teamMode && (
+                    <div className="team-cell">
+                      <span className={`badge team ${p.team === "A" ? "team-a" : "team-b"}`}>{p.team}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {isHost && (
+              <div className="form-actions">
+                <button className="primary full" onClick={handleRestart}>
+                  Перезапустить игру
+                </button>
+              </div>
+            )}
+          </div>
         </section>
       )}
     </div>
