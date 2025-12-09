@@ -6,6 +6,7 @@ import json
 import random
 import string
 import logging
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -365,7 +366,7 @@ class Lobby:
                         player.guesses.clear()
                         self.best_attempt_scores[player_id] = 0
 
-        # тайм-режим: если все игроки группы исчерпали попытки и авто-переход включен — двигаем на следующее слово
+        # тайм-режим: если все игроки группы исчерпали попытки и авто-переход включен — штрафуем и двигаем на следующее слово
         if self.timed_mode and self.auto_advance and not self.winner_id:
             group_players = (
                 [p for p in self.players.values() if p.team == group_key]
@@ -374,6 +375,16 @@ class Lobby:
             )
             all_out_group = all(len(p.guesses) >= self.attempts_limit for p in group_players)
             if all_out_group:
+                # штраф: 60% от максимума за идеальное слово (L*L + L)
+                max_points = self.word_length * self.word_length + self.word_length
+                penalty = math.ceil(max_points * 0.6)
+                if self.team_mode:
+                    for pl in group_players:
+                        pl.total_score = max(0, pl.total_score - penalty)
+                    self.team_scores[group_key] = max(0, self.team_scores.get(group_key, 0) - penalty)
+                else:
+                    player.total_score = max(0, player.total_score - penalty)
+
                 current_idx = self.group_progress.get(group_key, 0)
                 next_idx = current_idx + 1
                 if next_idx >= len(self.word_sequence):
