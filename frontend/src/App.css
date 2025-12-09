@@ -592,10 +592,11 @@ button:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: transparent;
+  background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
   padding: 8px 12px;
+  border-radius: 10px;
 }
 
 .hint {
@@ -1115,4 +1116,40 @@ button:hover {
 
 .theme-dark .toast-close {
   color: var(--text);
+}
+
+.theme-dark .theme-toggle {
+  background: #111827;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+.theme-dark button {
+  background: #1f2937;
+  color: #e5e7eb;
+  border: 1px solid #334155;
+}
+
+.theme-dark button.primary {
+  background: #7c3aed;
+  color: #fff;
+  border-color: #6d28d9;
+}
+
+.theme-dark button.ghost {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #e5e7eb;
+}
+
+.theme-dark .pill-btn {
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+
+.theme-dark .pill-btn.active {
+  background: #0d9488;
+  color: #ffffff;
+  border-color: #0f766e;
 }
