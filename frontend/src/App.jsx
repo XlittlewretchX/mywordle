@@ -6,6 +6,7 @@ const API_URL = API_URL_RAW.replace(/\/+$/, "");
 const WS_URL_RAW = import.meta.env.VITE_WS_URL || API_URL.replace(/^http/, "ws");
 const WS_URL = WS_URL_RAW.replace(/\/+$/, "");
 const SESSION_KEY = "wordle_session";
+const THEME_KEY = "mywordle_theme";
 
 const initialLobby = null;
 
@@ -42,6 +43,11 @@ function App() {
   const [wsStatus, setWsStatus] = useState("disconnected");
   const [wsNonce, setWsNonce] = useState(0);
   const [nowTs, setNowTs] = useState(Date.now());
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
 
   const isHost = lobby && playerId === lobby.hostId;
   const started = lobby?.started;
@@ -63,6 +69,12 @@ function App() {
   }, []);
 
   const stampLobby = (state) => (state ? { ...state, _receivedAt: Date.now() } : state);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("theme-dark", theme === "dark");
+    document.documentElement.classList.toggle("theme-light", theme === "light");
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     // авто-восстановление сессии после перезагрузки
@@ -154,6 +166,10 @@ function App() {
 
   const notify = (text) => {
     pushToast("Сообщение", text, "info");
+  };
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
   const postJson = async (path, body) => {
@@ -423,6 +439,9 @@ function App() {
                 {String((roundRemainingSec || 0) % 60).padStart(2, "0")}
               </span>
             )}
+            <button className="ghost theme-toggle" onClick={toggleTheme} aria-label="Переключить тему">
+              {theme === "dark" ? "🌙 Тёмная тема" : "☀️ Светлая тема"}
+            </button>
           </div>
         </div>
       </header>

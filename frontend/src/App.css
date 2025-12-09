@@ -101,7 +101,7 @@
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px;
-  color: #0f172a;
+  color: var(--text);
 }
 
 .page {
@@ -120,7 +120,7 @@
 
 .hero {
   background: linear-gradient(135deg, #2563eb, #7c3aed);
-  color: #fff;
+  color: var(--hero-text);
   border-radius: 16px;
   padding: 20px;
   box-shadow: 0 15px 40px rgba(37, 99, 235, 0.25);
@@ -248,8 +248,8 @@
 }
 
 .card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
@@ -267,8 +267,8 @@
   align-items: center;
   gap: 8px;
   padding: 12px;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  background: var(--panel);
+  border: 1px dashed var(--border);
   border-radius: 12px;
   min-height: 140px;
 }
@@ -322,14 +322,16 @@ label {
   gap: 6px;
   margin-bottom: 12px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text);
 }
 
 input,
 select {
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
   font-size: 15px;
 }
 
@@ -586,13 +588,23 @@ button:hover {
   filter: brightness(0.97);
 }
 
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+}
+
 .hint {
-  color: #475569;
+  color: var(--muted);
   font-size: 14px;
 }
 
 .muted {
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .flash {
@@ -681,7 +693,7 @@ button:hover {
   right: 8px;
   background: transparent;
   border: none;
-  color: #0f172a;
+  color: var(--text);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -702,16 +714,16 @@ button:hover {
 
 .toast-title {
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text);
 }
 
 .toast-text {
-  color: #0f172a;
+  color: var(--text);
   font-size: 14px;
 }
 
 .toast-sub {
-  color: #475569;
+  color: var(--muted);
   font-size: 13px;
 }
 
@@ -1008,4 +1020,99 @@ button:hover {
 }
 .center {
   text-align: center;
+}
+
+/* Dark theme overrides */
+.theme-dark body {
+  background: linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
+}
+
+.theme-dark #root {
+  color: var(--text);
+}
+
+.theme-dark .hero {
+  background: linear-gradient(135deg, #0f172a, #312e81);
+  box-shadow: 0 15px 40px rgba(49, 46, 129, 0.35);
+}
+
+.theme-dark .card,
+.theme-dark .player-card,
+.theme-dark .score-board,
+.theme-dark .board,
+.theme-dark .action-block {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.theme-dark .name-card {
+  background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+  border-color: var(--border);
+}
+
+.theme-dark .status-row .chip {
+  background: #1f2937;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+.theme-dark .chip-idle {
+  background: #1f2937;
+  color: #fcd34d;
+  border-color: #facc15;
+}
+
+.theme-dark label,
+.theme-dark .score-name,
+.theme-dark .winner-word,
+.theme-dark .score-value {
+  color: var(--text);
+}
+
+.theme-dark input,
+.theme-dark select,
+.theme-dark .guess-input {
+  background: #0b1220;
+  color: #e5e7eb;
+  border-color: #334155;
+}
+
+.theme-dark .keyboard {
+  background: transparent;
+}
+
+.theme-dark .kb-key,
+.theme-dark .kb-key.idle {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e5e7eb;
+}
+
+.theme-dark .kb-key.absent {
+  background: #1f2937;
+  color: #9ca3af;
+  border-color: #334155;
+}
+
+.theme-dark .board {
+  background: #0f172a;
+}
+
+.theme-dark .toast {
+  background: linear-gradient(135deg, #0f172a, #111827);
+  border-color: #334155;
+}
+
+.theme-dark .toast-title,
+.theme-dark .toast-text {
+  color: var(--text);
+}
+
+.theme-dark .toast-sub {
+  color: var(--muted);
+}
+
+.theme-dark .toast-close {
+  color: var(--text);
 }
