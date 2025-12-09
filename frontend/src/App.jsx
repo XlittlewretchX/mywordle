@@ -36,7 +36,6 @@ function App() {
   const [lobbyCode, setLobbyCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [playerId, setPlayerId] = useState("");
-  const [playerName, setPlayerName] = useState("");
   const [lobby, setLobby] = useState(initialLobby);
   const [toasts, setToasts] = useState([]);
   const [guess, setGuess] = useState("");
